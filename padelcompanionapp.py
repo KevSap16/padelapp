@@ -47,7 +47,7 @@ def update_stats_for_match(stats, team_a, team_b, a_pts, b_pts):
     else:
         for p in (list(team_a) + list(team_b)): stats[p]["T"] += 1
 
-st.title("Padel Mexicano Mixer")
+st.title("Padel Mexicano by KEVSAP")
 
 with st.expander("1) Setup", expanded=not st.session_state.players):
     courts = st.number_input("How many courts?", min_value=1, step=1, value=2)
