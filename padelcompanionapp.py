@@ -28,25 +28,26 @@ def choose_players_for_round(all_players, stats, courts):
     return active, bench
 
 def make_pairings(players_for_round, stats, courts):
-    # Sort by standing: best first
-    srt = sorted(players_for_round, key=lambda p: (-stats[p]["PTS"], stats[p]["GP"], p.lower()))
-    
-    # --- HOMOGENEOUS TEAMS: top-with-top, bottom-with-bottom ---
-    # Pairs: (1,2), (3,4), (5,6), (7,8), ...
-    pairings = []
-    for i in range(0, len(srt), 2):
-        pairings.append((srt[i], srt[i+1]))  # adjacent partners
+    # Sort by rank: higher PTS first, then fewer GP, then name
+    srt = sorted(
+        players_for_round,
+        key=lambda p: (-stats[p]["PTS"], stats[p]["GP"], p.lower())
+    )
 
-    # Matches: pair0 vs pair1, pair2 vs pair3, ...
+    if len(srt) != 4 * courts:
+        raise RuntimeError("Internal pairing error. Player count not multiple of 4.")
+
     matches = []
-    for k in range(0, len(pairings), 2):
-        team_a = pairings[k]
-        team_b = pairings[k+1]
+    # Take players in blocks of 4 per court: [1,2,3,4], [5,6,7,8], ...
+    for c in range(courts):
+        block = srt[c*4:(c+1)*4]     # top 4 for this court
+        # Teams: 1&3 vs 2&4 for fairness of point sums
+        team_a = (block[0], block[2])  # 1 & 3
+        team_b = (block[1], block[3])  # 2 & 4
         matches.append((team_a, team_b))
 
-    if len(matches) != courts:
-        raise RuntimeError("Internal pairing error. Player count not multiple of 4.")
     return matches
+
 
 def update_stats_for_match(stats, team_a, team_b, a_pts, b_pts):
     for p in team_a:
