@@ -182,7 +182,7 @@ if st.session_state.players:
 
         st.subheader(f"Round {ridx + 1} matchups")
         if rnd.get("byes"):
-            st.caption("Byes: " + ", ".join(rnd["byes"]))
+            st.caption("Not Playing : " + ", ".join(rnd["byes"]))
 
         # Form skor: pakai 'value' = skor yang tersimpan; tidak ada overwrite ke 0
         for idx, (team_a, team_b) in enumerate(rnd["matches"], start=1):
