@@ -10,7 +10,8 @@ def ensure_state():
     ss.setdefault("courts", None)
     ss.setdefault("total_points", None)
     ss.setdefault("stats", {})
-    # rounds: list of dicts: {matches:[((a1,a2),(b1,b2)), ...], byes:[...], scores:[(a,b),...]}
+    # rounds: list of dicts:
+    # {matches:[((a1,a2),(b1,b2)), ...], byes:[...], scores:[(a,b),...]}
     ss.setdefault("rounds", [])
     ss.setdefault("view_round_idx", 0)
 
@@ -32,46 +33,32 @@ def make_pairings(players_for_round, stats, courts):
     )
     pairings, i, j = [], 0, len(srt) - 1
     while i < j:
-        pairings.append((srt[i], srt[j]))
-        i += 1
-        j -= 1
+        pairings.append((srt[i], srt[j])); i += 1; j -= 1
     matches = []
     for k in range(0, len(pairings), 2):
-        team_a = pairings[k]
-        team_b = pairings[k + 1]
+        team_a = pairings[k]; team_b = pairings[k + 1]
         matches.append((team_a, team_b))
     return matches
 
 def update_stats_for_match(stats, team_a, team_b, a_pts, b_pts):
     for p in team_a:
-        stats[p]["PTS"] += a_pts
-        stats[p]["GP"] += 1
+        stats[p]["PTS"] += a_pts; stats[p]["GP"] += 1
     for p in team_b:
-        stats[p]["PTS"] += b_pts
-        stats[p]["GP"] += 1
+        stats[p]["PTS"] += b_pts; stats[p]["GP"] += 1
     if a_pts > b_pts:
-        for p in team_a:
-            stats[p]["W"] += 1
-        for p in team_b:
-            stats[p]["L"] += 1
+        for p in team_a: stats[p]["W"] += 1
+        for p in team_b: stats[p]["L"] += 1
     elif b_pts > a_pts:
-        for p in team_b:
-            stats[p]["W"] += 1
-        for p in team_a:
-            stats[p]["L"] += 1
+        for p in team_b: stats[p]["W"] += 1
+        for p in team_a: stats[p]["L"] += 1
     else:
-        for p in (list(team_a) + list(team_b)):
-            stats[p]["T"] += 1
+        for p in (list(team_a) + list(team_b)): stats[p]["T"] += 1
 
 def empty_stats(players):
     return {p: {"PTS": 0, "GP": 0, "W": 0, "T": 0, "L": 0} for p in players}
 
 def recompute_stats_from_rounds(upto_idx=None):
-    """
-    Hitung ulang standings dari ronde 0..upto_idx (inklusif).
-    Jika upto_idx None → pakai semua ronde.
-    Hanya ronde dengan skor valid (jumlah = total_points) yang dihitung.
-    """
+    """Rebuild standings dari ronde 0..upto_idx (inklusif). Jika None, pakai semua ronde."""
     ss = st.session_state
     ss.stats = empty_stats(ss.players)
     n = len(ss.rounds) if upto_idx is None else upto_idx + 1
@@ -97,31 +84,20 @@ def generate_next_round():
     new_round = {
         "matches": matches,
         "byes": bench,
-        "scores": [(0, 0) for _ in matches],  # default 0, user akan isi
+        "scores": [(0, 0) for _ in matches],  # default 0; user akan isi
     }
     ss.rounds.append(new_round)
 
-def read_current_round_inputs(ridx):
-    """Ambil nilai skor dari widget untuk ronde ridx (tanpa mengubah state ronde)."""
+def get_current_scores_from_widgets(ridx):
+    """Ambil skor dari widget; jika key belum ada, fallback ke skor tersimpan."""
     ss = st.session_state
     rnd = ss.rounds[ridx]
     vals = []
-    for idx in range(1, len(rnd["matches"]) + 1):
-        a = ss.get(f"a_{ridx}_{idx}", 0)
-        b = ss.get(f"b_{ridx}_{idx}", 0)
+    for idx, (a_prev, b_prev) in enumerate(rnd["scores"], start=1):
+        a = ss.get(f"a_{ridx}_{idx}", a_prev if a_prev is not None else 0)
+        b = ss.get(f"b_{ridx}_{idx}", b_prev if b_prev is not None else 0)
         vals.append((int(a), int(b)))
     return vals
-
-def write_widget_defaults_from_round(ridx):
-    """Pastikan widget number_input menampilkan skor yang tersimpan untuk ronde ridx."""
-    ss = st.session_state
-    rnd = ss.rounds[ridx]
-    for idx, (a_prev, b_prev) in enumerate(rnd["scores"], start=1):
-        ka = f"a_{ridx}_{idx}"
-        kb = f"b_{ridx}_{idx}"
-        # overwrite agar konsisten saat regenerasi jadwal
-        ss[ka] = int(a_prev)
-        ss[kb] = int(b_prev)
 
 # ---------- UI ----------
 st.title("Padel Mexicano by Kevsap")
@@ -149,66 +125,57 @@ with st.expander("1) Setup", expanded=(len(st.session_state.players) == 0)):
             st.session_state.stats = empty_stats(players)
             st.success("Setup saved!")
 
-# 2) Rounds navigation + editor
+# 2) Rounds navigation + scoring
 if st.session_state.players:
     st.header("2) Rounds")
 
-    cols = st.columns([1, 1])
-    # Prev button: hanya navigasi, tidak menyimpan apa pun
-    with cols[0]:
+    col_prev, col_next = st.columns([1, 1])
+
+    # Prev: hanya navigasi
+    with col_prev:
         prev_disabled = (len(st.session_state.rounds) == 0) or (st.session_state.view_round_idx == 0)
         if st.button("◀ Prev", disabled=prev_disabled):
             if st.session_state.view_round_idx > 0:
                 st.session_state.view_round_idx -= 1
-                # tampilkan skor yang tersimpan di ronde tsb
-                write_widget_defaults_from_round(st.session_state.view_round_idx)
 
-    # Next button: simpan skor ronde sekarang (jika ada), update standings,
-    # lalu generate ronde berikutnya bila sedang di ronde terakhir.
-    with cols[1]:
+    # Next: simpan skor ronde saat ini, update standings, dan generate ronde baru jika perlu
+    with col_next:
         if st.button("Next ▶"):
             ss = st.session_state
-            # kasus: belum ada ronde → generate Round 1
+            # Jika belum ada ronde → buat Round 1
             if len(ss.rounds) == 0:
-                recompute_stats_from_rounds(None)   # dari nol
+                recompute_stats_from_rounds(None)
                 generate_next_round()
                 ss.view_round_idx = 0
-                write_widget_defaults_from_round(0)
             else:
                 ridx = ss.view_round_idx
-                # baca skor input user utk ronde saat ini
-                new_scores = read_current_round_inputs(ridx)
+                # Ambil skor dari widget
+                new_scores = get_current_scores_from_widgets(ridx)
 
-                # validasi total poin setiap match
+                # Validasi: tiap match harus total = total_points
                 if any(a + b != ss.total_points for (a, b) in new_scores):
                     st.error(f"Each match must total {ss.total_points} points.")
                 else:
-                    # cek apakah skor berubah
+                    # Simpan skor ronde saat ini
                     changed = (new_scores != ss.rounds[ridx]["scores"])
-                    # simpan skor ronde ini
                     ss.rounds[ridx]["scores"] = new_scores
 
                     if ridx == len(ss.rounds) - 1:
-                        # sedang di ronde terakhir → recompute dan generate ronde baru
-                        recompute_stats_from_rounds()  # pakai semua ronde valid
+                        # Di ronde terakhir → update standings & generate ronde baru
+                        recompute_stats_from_rounds()
                         generate_next_round()
                         ss.view_round_idx += 1
-                        write_widget_defaults_from_round(ss.view_round_idx)
                     else:
-                        # sedang di ronde tengah
+                        # Di ronde tengah
                         if changed:
-                            # regenerasi semua ronde setelahnya
-                            # 1) hitung standings sampai ronde saat ini
+                            # Recompute sampai ronde ini, buang masa depan, lalu regenerate next
                             recompute_stats_from_rounds(upto_idx=ridx)
-                            # 2) buang ronde masa depan
                             ss.rounds = ss.rounds[:ridx + 1]
-                            # 3) generate 1 ronde berikutnya yang baru
                             generate_next_round()
-                        # pindah ke ronde berikutnya (tanpa/kdgn regenerasi)
+                        # Pindah ke ronde berikutnya
                         ss.view_round_idx = min(ss.view_round_idx + 1, len(ss.rounds) - 1)
-                        write_widget_defaults_from_round(ss.view_round_idx)
 
-    # Tampilkan ronde yang sedang dilihat (jika sudah ada)
+    # Tampilkan ronde yang sedang dilihat
     if st.session_state.rounds:
         ridx = st.session_state.view_round_idx
         rnd = st.session_state.rounds[ridx]
@@ -217,29 +184,29 @@ if st.session_state.players:
         if rnd.get("byes"):
             st.caption("Byes: " + ", ".join(rnd["byes"]))
 
-        # pastikan widget default sesuai skor tersimpan
-        write_widget_defaults_from_round(ridx)
-
-        # form skor
+        # Form skor: pakai 'value' = skor yang tersimpan; tidak ada overwrite ke 0
         for idx, (team_a, team_b) in enumerate(rnd["matches"], start=1):
+            a_prev, b_prev = rnd["scores"][idx - 1]
+            a_default = int(a_prev) if a_prev is not None else 0
+            b_default = int(b_prev) if b_prev is not None else 0
             with st.container(border=True):
                 st.markdown(f"**Court {idx}**")
                 st.write(f"Team A: {team_a[0]} & {team_a[1]}")
                 st.write(f"Team B: {team_b[0]} & {team_b[1]}")
                 st.number_input(
                     f"Team A points (Court {idx})",
-                    min_value=0, step=1, key=f"a_{ridx}_{idx}"
+                    min_value=0, step=1, key=f"a_{ridx}_{idx}", value=a_default
                 )
                 st.number_input(
                     f"Team B points (Court {idx})",
-                    min_value=0, step=1, key=f"b_{ridx}_{idx}"
+                    min_value=0, step=1, key=f"b_{ridx}_{idx}", value=b_default
                 )
 
 # 3) Scoreboard (table)
 if st.session_state.players:
     st.header("3) Scoreboard")
 
-    # standings dihitung ulang dari semua ronde valid
+    # Standings selalu dihitung ulang dari semua ronde yang valid
     recompute_stats_from_rounds()
 
     rows = [
